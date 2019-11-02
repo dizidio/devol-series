@@ -33,21 +33,9 @@ METRIC_OPS = [operator.__lt__, operator.__gt__]
 METRIC_OBJECTIVES = [min, max]
 
 class DEvol:
-    """
-    Object which carries out genetic search and returns top performing model
-    upon completion.
-    """
-    def __init__(self, genome_handler, data_path=""):
-        """
-        Initialize a DEvol object which carries out the training and evaluation
-        of a genetic search.
 
-        Args:
-            genome_handler (GenomeHandler): the genome handler object defining
-                    the restrictions for the architecture search space
-            data_path (str): the file which the genome encodings and metric data
-                    will be stored in
-        """
+    def __init__(self, genome_handler, data_path=""):
+
         self.genome_handler = genome_handler
         timestr = time.strftime("%Y%m%d_%H%M%S")
         self.datafile = data_path or (timestr + '.csv')
@@ -67,14 +55,7 @@ class DEvol:
             writer.writerow(genome)
 
     def set_objective(self, metric):
-        """
-        Set the metric for optimization. Can also be done by passing to
-        `run`.
 
-        Args:
-            metric (str): either 'acc' to maximize classification accuracy, or
-                    else 'loss' to minimize the loss function
-        """
         if metric == 'acc':
             metric = 'accuracy'
         if metric not in ['loss', 'accuracy']:
@@ -86,29 +67,9 @@ class DEvol:
         self._metric_op = METRIC_OPS[self._objective == 'max']
         self._metric_objective = METRIC_OBJECTIVES[self._objective == 'max']
 
-    def run(self, dataset, num_generations, pop_size, epochs, fitness=None,
+    def run(self, dataset, num_generations, pop_size, epochs, n_tries, fitness=None,
             metric='accuracy'):
-        """
-        Run genetic search on dataset given number of generations and
-        population size
 
-        Args:
-            dataset : tuple or list of numpy arrays in form ((train_data,
-                    train_labels), (validation_data, validation_labels))
-            num_generations (int): number of generations to search
-            pop_size (int): initial population size
-            epochs (int): epochs for each model eval, passed to keras model.fit
-            fitness (None, optional): scoring function to be applied to
-                    population scores, will be called on a numpy array which is
-                    a min/max scaled version of evaluated model metrics, so It
-                    should accept a real number including 0. If left as default
-                    just the min/max scaled values will be used.
-            metric (str, optional): must be "accuracy" or "loss" , defines what
-                    to optimize during search
-
-        Returns:
-            keras model: best model found with weights
-        """
         self.set_objective(metric)
         (self.x_train, self.y_train), (self.x_test, self.y_test) = dataset
 
@@ -118,7 +79,8 @@ class DEvol:
                                         epochs,
                                         fitness,
                                         0,
-                                        num_generations)
+                                        num_generations,
+                                        n_tries)
 
         # evolve
         for gen in range(1, num_generations):
@@ -127,7 +89,8 @@ class DEvol:
                                             epochs,
                                             fitness,
                                             gen,
-                                            num_generations)
+                                            num_generations,
+                                            n_tries)
             ##### GARBAGE COLLECTOR #####
             K.clear_session()
             tf.reset_default_graph()
@@ -154,14 +117,14 @@ class DEvol:
             members[imem] = self._mutate(mem, gen)
         return members
 
-    def _evaluate(self, genome, epochs):
+    def _evaluate(self, genome, epochs, n_tries):
         model = self.genome_handler.decode(genome)
         print(model.summary());
         loss, accuracy = None, None
         best_mse = 10000000000;
         train_data = self.x_train.loc[:, list(map(bool,genome[:self.genome_handler.max_input_size]))]
         test_data = self.x_test.loc[:, list(map(bool,genome[:self.genome_handler.max_input_size]))]
-        for i in range(5):
+        for i in range(n_tries):
             try:
                 history = model.fit(train_data, self.y_train,
                           validation_data=(test_data, self.y_test),
@@ -177,7 +140,6 @@ class DEvol:
         loss = best_mse;
 
         self._record_stats(model, genome, loss, accuracy)
-
         return model, loss, accuracy
 
     def _record_stats(self, model, genome, loss, accuracy):
@@ -215,11 +177,11 @@ class DEvol:
                'constraints live within your computational resources.'))
         return loss, accuracy
 
-    def _evaluate_population(self, members, epochs, fitness, igen, ngen):
+    def _evaluate_population(self, members, epochs, fitness, igen, ngen, n_tries):
         fit = []
         for imem, mem in enumerate(members):
             self._print_evaluation(imem, len(members), igen, ngen)
-            res = self._evaluate(mem, epochs)
+            res = self._evaluate(mem, epochs, n_tries)
             v = res[self._metric_index]
             del res
             fit.append(v)
@@ -238,8 +200,8 @@ class DEvol:
 
 
     def _print_result(self, fitness, generation):
-        result_str = ('Generation {3}:\t\tbest {4}: {0:0.4f}\t\taverage:'
-                      '{1:0.4f}\t\tstd: {2:0.4f}')
+        result_str = ('Generation {3}:\t\tbest {4}: {0}\t\taverage:'
+                      '{1}\t\tstd: {2}')
         print(result_str.format(self._metric_objective(fitness),
                                 np.mean(fitness),
                                 np.std(fitness),

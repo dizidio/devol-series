@@ -1,11 +1,12 @@
 import tensorflow as tf
-from keras.backend.tensorflow_backend import set_session
-config = tf.ConfigProto()
-config.gpu_options.per_process_gpu_memory_fraction = 0.4
-config.gpu_options.visible_device_list = "0"
-set_session(tf.Session(config=config))
+##from keras.backend.tensorflow_backend import set_session
+##config = tf.ConfigProto()
+##config.gpu_options.per_process_gpu_memory_fraction = 0.4
+##config.gpu_options.visible_device_list = "0"
+##set_session(tf.Session(config=config))
 
-from devol import DEvol, GenomeHandler
+from devol.devol import DEvol
+from devol.genome_handler import GenomeHandler
 import pandas as pd
 
 df = pd.read_excel("./data/txcambio_error_predict.xlsx")
@@ -64,8 +65,9 @@ genome_handler = GenomeHandler(max_dense_layers=4, # includes final layer
 
 devol = DEvol(genome_handler)
 model = devol.run(dataset=dataset,
-                  num_generations=20,
-                  pop_size=30,
+                  num_generations=5,
+                  pop_size=5,
                   epochs=5,
+                  n_tries=5,
                   metric='loss')
 print(model.summary())

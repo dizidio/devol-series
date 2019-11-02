@@ -7,45 +7,13 @@ from keras.layers.convolutional import Convolution2D, MaxPooling2D
 from keras.layers.normalization import BatchNormalization
 from pyDOE import *
 
-##################################
-# Genomes are represented as fixed-with lists of integers corresponding
-# to sequential layers and properties. A model with 2 convolutional layers
-# and 1 dense layer would look like:
-#
-# [<conv layer><conv layer><dense layer><optimizer>]
-#
-# The makeup of the convolutional layers and dense layers is defined in the
-# GenomeHandler below under self.convolutional_layer_shape and
-# self.dense_layer_shape. <optimizer> consists of just one property.
-###################################
-
 class GenomeHandler:
-    """
-    Defines the configuration and handles the conversion and mutation of
-    individual genomes. Should be created and passed to a `DEvol` instance.
-
-    ---
-    Genomes are represented as fixed-with lists of integers corresponding
-    to sequential layers and properties. A model with 2 convolutional layers
-    and 1 dense layer would look like:
-
-    [<conv layer><conv layer><dense layer><optimizer>]
-
-    The makeup of the convolutional layers and dense layers is defined in the
-    GenomeHandler below under self.convolutional_layer_shape and
-    self.dense_layer_shape. <optimizer> consists of just one property.
-    """
 
     def __init__(self, max_dense_layers,
                  max_dense_nodes, max_input_size,
                  batch_normalization=True, dropout=True, max_pooling=True,
                  optimizers=None, activations=None):
-        """
-        Creates a GenomeHandler according 
 
-        Args:
-            
-        """
         if max_dense_layers < 1:
             raise ValueError(
                 "At least one dense layer is required"
@@ -78,7 +46,7 @@ class GenomeHandler:
             "dropout": [(5*i if dropout else 0) for i in range(16)]
         }
 
-        self.dense_layers = max_dense_layers - 1 # this doesn't include the softmax layer, so -1
+        self.dense_layers = max_dense_layers - 1 # this doesn't include the last layer, so -1
         self.dense_layer_size = len(self.dense_layer_shape)
         self.max_input_size = max_input_size
 
@@ -116,6 +84,7 @@ class GenomeHandler:
         offset = self.max_input_size
         
         input_layer = True
+        genome[offset]=1
         
         for i in range(self.dense_layers):
             if genome[offset]:
@@ -140,6 +109,8 @@ class GenomeHandler:
 
     def genome_representation(self):
         encoding = []
+        for i in range(self.max_input_size):
+            encoding.append("Input #{}".format(i))
         for i in range(self.dense_layers):
             for key in self.dense_layer_shape:
                 encoding.append("Dense" + str(i) + " " + key)
@@ -155,7 +126,7 @@ class GenomeHandler:
                 param = self.layer_params[key]
                 genome.append(np.random.choice(param))
         genome.append(np.random.choice(list(range(len(self.optimizer)))))
-        genome[0] = 1
+        genome[self.max_input_size] = 1
         return genome        
         
 
@@ -164,11 +135,11 @@ class GenomeHandler:
         if len(genome) != expected_len:
             return False
         ind = 0
-        for i in range(self.max_input_size):
+        for _ in range(self.max_input_size):
             if genome[ind] != 0 and genome[ind]!=1:
                 return False
             ind+=1
-        for i in range(self.dense_layers):
+        for _ in range(self.dense_layers):
             for j in range(self.dense_layer_size):
                 if genome[ind + j] not in self.denseParam(j):
                     return False
