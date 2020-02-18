@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-from sklearn.neural_network import MLPRegressor
+from sklearn.svm import SVR
 from sklearn.metrics import mean_squared_error as mse
 import time
 import csv
@@ -36,11 +36,9 @@ def load_data(filename, index_test, lag_max, split_ratio=0.2):
 
 
 class Population:
-    def __init__(self, pop_size, max_layers, n_tries, dataset):
+    def __init__(self, pop_size, dataset):
         self.pop = []
-        self.n_tries = n_tries
         self.pop_size = pop_size
-        self.max_layers = max_layers
         self.X_train = dataset[0][0]
         self.y_train = dataset[0][1]
         self.X_val = dataset[1][0]
@@ -52,26 +50,27 @@ class Population:
             ind = []
             for _ in range(self.input_size):
                 ind.append(np.random.choice(input_active))
-            for _ in range(self.max_layers):
-                ind.append(np.random.choice(layer_active))
-                ind.append(np.random.choice(layer_nodes))
             ind.append(np.random.choice(activation))
-            ind.append(np.random.choice(solver))
+            ind.append(np.random.choice(gamma))
+            ind.append(np.random.choice(C))
+            ind.append(np.random.choice(epsilon))
             self.pop.append(ind)
             
     def get_model(self,genome):
-        layers = []
-        for i in range(self.input_size, self.input_size+self.max_layers*2, 2):
-            layers.append(genome[i]*genome[i+1])
-        layers = tuple([l for l in layers if l!=0])
-        return MLPRegressor(hidden_layer_sizes=layers, activation=genome[-2], solver=genome[-1], max_iter = 1500, learning_rate='adaptive')
+        if genome[-4].startswith('poly'):
+            degree = int(genome[-4][-1])
+            kernel = genome[-4][:-1]
+        else:
+            degree = 3 #default degree
+            kernel = genome[-4]
+        return SVR(kernel=kernel, degree=degree, gamma=genome[-3], C=genome[-2], epsilon=genome[-1])
 
     def evaluate(self,genome):
         error_list = []
-        for _ in range(self.n_tries): 
-            mlp = self.get_model(genome)
-            mlp.fit(self.X_train, self.y_train.values.ravel())
-            error_list.append(mse(self.y_val.values.ravel(), mlp.predict(self.X_val)))
+        svr = self.get_model(genome)
+        print(genome)
+        svr.fit(self.X_train.iloc[:,genome[:self.input_size]], self.y_train.values.ravel())
+        error_list.append(mse(self.y_val.values.ravel(), svr.predict(self.X_val.iloc[:,genome[:self.input_size]])))
         print(np.min(error_list))
         return np.min(error_list)
 
@@ -89,15 +88,14 @@ class Population:
         index = np.random.randint(len(genome))
         if index < self.input_size:
             genome[index] = 1 - genome[index]
-        elif index < self.input_size + self.max_layers*2:
-            if (index - self.input_size) % 2 == 0:
-                genome[index] = 1 - genome[index]
-            else:
-                genome[index] = np.random.choice(layer_nodes)
-        elif index == len(genome)-2:
+        elif index == len(genome)-4:
             genome[index] = np.random.choice(activation)
+        elif index == len(genome)-3:
+            genome[index] = np.random.choice(gamma)
+        elif index == len(genome)-2:
+            genome[index] = np.random.choice(C)
         elif index == len(genome)-1:
-            genome[index] = np.random.choice(solver)
+            genome[index] = np.random.choice(epsilon)
         return genome
 
     def crossover(self, genome1, genome2):
@@ -152,37 +150,34 @@ class Population:
 
 # CONFIGS
 
-max_dense_nodes = 2048;
-max_layers = 4;
 pop_size = 100;
-n_tries = 3;
 nGens = 50;
 crossoverRatio = 0.5;
 lag_max = 10;
 split_ratio = 0.2
+tol = 0.00001
 
 input_active = [0, 1]
-activation = ['identity', 'logistic', 'tanh', 'relu']
-solver = ['lbfgs', 'sgd', 'adam']
-layer_active = [0, 1]
-layer_nodes = [2**i for i in range(0, int(np.log2(max_dense_nodes))+1)]
+activation = ['linear', 'poly2', 'poly3', 'poly4', 'poly5', 'poly6', 'rbf', 'sigmoid']
+gamma = ['scale','auto']
+C = [0.00001,0.0001,0.001,0.01,0.1,1.0,10.0,100.0,1000.0,10000.0]
+epsilon = [0.0,0.00001,0.0001,0.001,0.01,0.1,1.0,10.0]
 
 # EXECUTION
 f = "./data/PREVS_SMART.xlsx"
 
 
-filename = 'Log_' + time.strftime("%Y%m%d_%H%M%S") + '.txt'
+filename = 'LogSVM_' + time.strftime("%Y%m%d_%H%M%S") + '.txt'
 with open(filename, 'w', newline="") as csvfile:
     writer = csv.writer(csvfile, delimiter=',')
-    writer.writerow(['max_dense_nodes={}'.format(max_dense_nodes), 'max_layers={}'.format(max_layers), 'pop_size={}'.format(pop_size), 'n_tries={}'.format(n_tries),
-                    'nGens={}'.format(nGens), 'crossoverRatio={}'.format(crossoverRatio), 'lag_max={}'.format(lag_max), 'split_ratio={}'.format(split_ratio)])
+    writer.writerow(['tol={}'.format(tol), 'pop_size={}'.format(pop_size),'nGens={}'.format(nGens), 'crossoverRatio={}'.format(crossoverRatio), 'lag_max={}'.format(lag_max), 'split_ratio={}'.format(split_ratio)])
     writer.writerow(['File', 'Generation', 'Individual', 'Genome', 'MSE (Fitness)'])
 
 
 dataset, testdataset = load_data(f, lag_max=lag_max, index_test = -670, split_ratio=split_ratio)
 print("Carregando arquivo: {}".format(f))
 best_score = np.inf
-gen = Population(pop_size, max_layers, n_tries, dataset)
+gen = Population(pop_size, dataset)
 for g in range(nGens):
     start_time = time.time()
     gen.evaluate_pop()
