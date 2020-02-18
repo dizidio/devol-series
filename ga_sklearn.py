@@ -70,8 +70,8 @@ class Population:
         error_list = []
         for _ in range(self.n_tries): 
             mlp = self.get_model(genome)
-            mlp.fit(self.X_train, self.y_train.values.ravel())
-            error_list.append(mse(self.y_val.values.ravel(), mlp.predict(self.X_val)))
+            mlp.fit(self.X_train.iloc[:,genome[:self.input_size]], self.y_train.values.ravel())
+            error_list.append(mse(self.y_val.values.ravel(), mlp.predict(self.X_val.iloc[:,genome[:self.input_size]])))
         print(np.min(error_list))
         return np.min(error_list)
 
