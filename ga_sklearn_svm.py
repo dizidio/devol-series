@@ -167,29 +167,64 @@ epsilon = [0.0,0.00001,0.0001,0.001,0.01,0.1,1.0,10.0]
 f = "./data/PREVS_SMART.xlsx"
 
 
-filename = 'LogSVM_' + time.strftime("%Y%m%d_%H%M%S") + '.txt'
-with open(filename, 'w', newline="") as csvfile:
-    writer = csv.writer(csvfile, delimiter=',')
-    writer.writerow(['tol={}'.format(tol), 'pop_size={}'.format(pop_size),'nGens={}'.format(nGens), 'crossoverRatio={}'.format(crossoverRatio), 'lag_max={}'.format(lag_max), 'split_ratio={}'.format(split_ratio)])
-    writer.writerow(['File', 'Generation', 'Individual', 'Genome', 'MSE (Fitness)'])
+##filename = 'LogSVM_' + time.strftime("%Y%m%d_%H%M%S") + '.txt'
+##with open(filename, 'w', newline="") as csvfile:
+##    writer = csv.writer(csvfile, delimiter=',')
+##    writer.writerow(['tol={}'.format(tol), 'pop_size={}'.format(pop_size),'nGens={}'.format(nGens), 'crossoverRatio={}'.format(crossoverRatio), 'lag_max={}'.format(lag_max), 'split_ratio={}'.format(split_ratio)])
+##    writer.writerow(['File', 'Generation', 'Individual', 'Genome', 'MSE (Fitness)'])
 
 
 dataset, testdataset = load_data(f, lag_max=lag_max, index_test = -670, split_ratio=split_ratio)
 print("Carregando arquivo: {}".format(f))
-best_score = np.inf
+##best_score = np.inf
+##gen = Population(pop_size, dataset)
+##for g in range(nGens):
+##    start_time = time.time()
+##    gen.evaluate_pop()
+##    print("Generation {} - Avg : {:.4f} - Std : {:.4f} - Best: {:.4f}".format(g+1, gen.get_avg(), gen.get_std(), gen.get_best()))
+##    print("--- %s seconds ---" % (time.time() - start_time))
+##    if gen.get_best() < best_score:
+##        best_ind = gen.get_best_model()
+##
+##    with open(filename, 'a', newline="") as csvfile:
+##        writer = csv.writer(csvfile, delimiter=',')
+##        for i, d in enumerate(zip(gen.get_pop(), gen.get_error_list())):
+##            writer.writerow([f, g+1, i+1, d[0], d[1]])
+##        writer.writerow(['------ Generation {} '.format(g+1), 'Avg: {} '.format(gen.get_avg()), 'Std: {} '.format(gen.get_std()),'Best: {} ------'.format(gen.get_best())])
+##
+##    gen.update()
+
+
+
+def load_data_full(filename, lag_max):
+    df = pd.read_excel(filename)
+    df['VALOR REAL'] = df.TARGET - df.SARIMA
+    df = df[['VALOR REAL']]
+    for i in range(1,lag_max):
+            df['VALOR REAL {}'.format(i)] = df['VALOR REAL'].shift(i)
+    df = df.dropna()
+    df = df.reset_index()
+    output = df['VALOR REAL']
+    df = df.drop(columns=['VALOR REAL', 'index'])
+    return df,output
+
+
 gen = Population(pop_size, dataset)
-for g in range(nGens):
-    start_time = time.time()
-    gen.evaluate_pop()
-    print("Generation {} - Avg : {:.4f} - Std : {:.4f} - Best: {:.4f}".format(g+1, gen.get_avg(), gen.get_std(), gen.get_best()))
-    print("--- %s seconds ---" % (time.time() - start_time))
-    if gen.get_best() < best_score:
-        best_ind = gen.get_best_model()
 
-    with open(filename, 'a', newline="") as csvfile:
-        writer = csv.writer(csvfile, delimiter=',')
-        for i, d in enumerate(zip(gen.get_pop(), gen.get_error_list())):
-            writer.writerow([f, g+1, i+1, d[0], d[1]])
-        writer.writerow(['------ Generation {} '.format(g+1), 'Avg: {} '.format(gen.get_avg()), 'Std: {} '.format(gen.get_std()),'Best: {} ------'.format(gen.get_best())])
+genome = [1, 0, 1, 0, 0, 0, 0, 0, 1, 'rbf', 'scale', 0.001, 1e-05]
 
-    gen.update()
+
+svm = gen.get_model(genome)
+svm.fit(gen.X_train.iloc[:,genome[:gen.input_size]], gen.y_train.values.ravel())
+print(mse(gen.y_val.values.ravel(), svm.predict(gen.X_val.iloc[:,genome[:gen.input_size]])))
+
+
+
+dataset, output = load_data_full(f, lag_max=lag_max)
+out_pred = svm.predict(dataset.iloc[:,genome[:gen.input_size]])
+
+df_out = pd.DataFrame(output)
+
+df_out['out_svm'] = out_pred
+
+df_out.to_csv('out_svm.csv')

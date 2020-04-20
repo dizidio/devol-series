@@ -6,20 +6,20 @@ import time
 import csv
 
 def load_data(filename, index_test, lag_max, split_ratio=0.2):
-    df = pd.read_excel(filename)
-    
-    df['VALOR REAL'] = df.TARGET - df.SARIMA
-    df = df[['VALOR REAL']]
+    df = pd.read_csv(filename)
 
     for i in range(1,lag_max):
-        df['VALOR REAL {}'.format(i)] = df['VALOR REAL'].shift(i)
+        df['SARIMA_{}'.format(i)] = df['SARIMA'].shift(i)
+        df['out_mlp_{}'.format(i)] = df['out_mlp'].shift(i)
+        df['out_svm_{}'.format(i)] = df['out_svm'].shift(i)
 
     df = df.dropna()
     df = df.reset_index()
 
-    output = df['VALOR REAL']
-    #df = df.drop(columns=['ERRO_ARIMA', 'ERRO_SVM', 'ERRO_MLP', 'DIFF_ERRO', 'VALOR REAL', 'index'])
-    df = df.drop(columns=['VALOR REAL', 'index'])
+    df = df.drop(columns=[c for c in df if c.startswith('out_mlp')]) #########
+
+    output = df['TARGET']
+    df = df.drop(columns=['Unnamed: 0', 'TARGET', 'SPLIT', 'index'])
 
     dftrain = df.iloc[:index_test]
     outtrain = output.iloc[:index_test]
@@ -74,7 +74,7 @@ class Population:
             mlp = self.get_model(genome)
             mlp.fit(self.X_train.iloc[:,genome[:self.input_size]], self.y_train.values.ravel())
             error_list.append(mse(self.y_val.values.ravel(), mlp.predict(self.X_val.iloc[:,genome[:self.input_size]])))
-        print(np.min(error_list))
+        print("MSE: {}".format(np.min(error_list)))
         return np.min(error_list)
 
     def evaluate_pop(self):
@@ -151,6 +151,7 @@ class Population:
 
     def get_error_list(self):
         return self.error_list
+        
 
 # CONFIGS
 
@@ -170,77 +171,35 @@ layer_active = [0, 1]
 layer_nodes = [2**i for i in range(0, int(np.log2(max_dense_nodes))+1)]
 
 # EXECUTION
-f = "./data/PREVS_SMART.xlsx"
+f = "./combined_arima_svm_mlp.csv"
 
 
-##filename = 'Log_' + time.strftime("%Y%m%d_%H%M%S") + '.txt'
-##with open(filename, 'w', newline="") as csvfile:
-##    writer = csv.writer(csvfile, delimiter=',')
-##    writer.writerow(['max_dense_nodes={}'.format(max_dense_nodes), 'max_layers={}'.format(max_layers), 'pop_size={}'.format(pop_size), 'n_tries={}'.format(n_tries),
-##                    'nGens={}'.format(nGens), 'crossoverRatio={}'.format(crossoverRatio), 'lag_max={}'.format(lag_max), 'split_ratio={}'.format(split_ratio)])
-##    writer.writerow(['File', 'Generation', 'Individual', 'Genome', 'MSE (Fitness)'])
+filename = 'LogCombination_' + time.strftime("%Y%m%d_%H%M%S") + '.txt'
+with open(filename, 'w', newline="") as csvfile:
+    writer = csv.writer(csvfile, delimiter=',')
+    writer.writerow(['max_dense_nodes={}'.format(max_dense_nodes), 'max_layers={}'.format(max_layers), 'pop_size={}'.format(pop_size), 'n_tries={}'.format(n_tries),
+                    'nGens={}'.format(nGens), 'crossoverRatio={}'.format(crossoverRatio), 'lag_max={}'.format(lag_max), 'split_ratio={}'.format(split_ratio)])
+    writer.writerow(['File', 'Generation', 'Individual', 'Genome', 'MSE (Fitness)'])
 
 
 dataset, testdataset = load_data(f, lag_max=lag_max, index_test = -670, split_ratio=split_ratio)
 print("Carregando arquivo: {}".format(f))
-##best_score = np.inf
+best_score = np.inf
 gen = Population(pop_size, max_layers, n_tries, dataset)
 
-genome = [1, 0, 0, 0, 1, 1, 0, 0, 1, 1, 2048, 0, 1024, 1, 2048, 1, 8, 'relu', 'adam']
+for g in range(nGens):
+    start_time = time.time()
+    gen.evaluate_pop()
+    print("Generation {} - Avg : {:.4f} - Std : {:.4f} - Best: {:.4f}".format(g+1, gen.get_avg(), gen.get_std(), gen.get_best()))
+    print("--- %s seconds ---" % (time.time() - start_time))
+    if gen.get_best() < best_score:
+        best_ind = gen.get_best_model()
 
+    with open(filename, 'a', newline="") as csvfile:
+        writer = csv.writer(csvfile, delimiter=',')
+        for i, d in enumerate(zip(gen.get_pop(), gen.get_error_list())):
+            writer.writerow([f, g+1, i+1, d[0], d[1]])
+        writer.writerow(['------ Generation {} '.format(g+1), 'Avg: {} '.format(gen.get_avg()), 'Std: {} '.format(gen.get_std()),'Best: {} ------'.format(gen.get_best())])
 
-mlp1 = gen.get_model(genome)
-mlp1.fit(gen.X_train.iloc[:,genome[:gen.input_size]], gen.y_train.values.ravel())
-print(mse(gen.y_val.values.ravel(), mlp1.predict(gen.X_val.iloc[:,genome[:gen.input_size]])))
+    gen.update()
 
-mlp2 = gen.get_model(genome)
-mlp2.fit(gen.X_train.iloc[:,genome[:gen.input_size]], gen.y_train.values.ravel())
-print(mse(gen.y_val.values.ravel(), mlp2.predict(gen.X_val.iloc[:,genome[:gen.input_size]])))
-
-mlp3 = gen.get_model(genome)
-mlp3.fit(gen.X_train.iloc[:,genome[:gen.input_size]], gen.y_train.values.ravel())
-print(mse(gen.y_val.values.ravel(), mlp3.predict(gen.X_val.iloc[:,genome[:gen.input_size]])))
-
-mlp4 = gen.get_model(genome)
-mlp4.fit(gen.X_train.iloc[:,genome[:gen.input_size]], gen.y_train.values.ravel())
-print(mse(gen.y_val.values.ravel(), mlp4.predict(gen.X_val.iloc[:,genome[:gen.input_size]])))
-
-mlp5 = gen.get_model(genome)
-mlp5.fit(gen.X_train.iloc[:,genome[:gen.input_size]], gen.y_train.values.ravel())
-print(mse(gen.y_val.values.ravel(), mlp5.predict(gen.X_val.iloc[:,genome[:gen.input_size]])))
-##for g in range(nGens):
-##    start_time = time.time()
-##    gen.evaluate_pop()
-##    print("Generation {} - Avg : {:.4f} - Std : {:.4f} - Best: {:.4f}".format(g+1, gen.get_avg(), gen.get_std(), gen.get_best()))
-##    print("--- %s seconds ---" % (time.time() - start_time))
-##    if gen.get_best() < best_score:
-##        best_ind = gen.get_best_model()
-##
-##    with open(filename, 'a', newline="") as csvfile:
-##        writer = csv.writer(csvfile, delimiter=',')
-##        for i, d in enumerate(zip(gen.get_pop(), gen.get_error_list())):
-##            writer.writerow([f, g+1, i+1, d[0], d[1]])
-##        writer.writerow(['------ Generation {} '.format(g+1), 'Avg: {} '.format(gen.get_avg()), 'Std: {} '.format(gen.get_std()),'Best: {} ------'.format(gen.get_best())])
-##
-##    gen.update()
-
-##def load_data_full(filename, lag_max):
-##    df = pd.read_excel(filename)
-##    df['VALOR REAL'] = df.TARGET - df.SARIMA
-##    df = df[['VALOR REAL']]
-##    for i in range(1,lag_max):
-##            df['VALOR REAL {}'.format(i)] = df['VALOR REAL'].shift(i)
-##    df = df.dropna()
-##    df = df.reset_index()
-##    output = df['VALOR REAL']
-##    df = df.drop(columns=['VALOR REAL', 'index'])
-##    return df,output
-##
-##dataset, output = load_data_full(f, lag_max=lag_max)
-##out_pred = mlp3.predict(dataset.iloc[:,genome[:gen.input_size]])
-##
-##df_out = pd.DataFrame(output)
-##
-##f_out['out_mlp'] = out_pred
-##
-##df_out.to_csv('out_mlp.csv')
